@@ -4,9 +4,9 @@ Version: 0.1.7
 Summary: Async Python client for Rotarex DIMES SRG API
 Author-email: ROTAREX <develop@rotarex.com>
 License: MIT
-Project-URL: Homepage, https://github.com/Rotarex/rotarex-dimes-srg-api
-Project-URL: Repository, https://github.com/Rotarex/rotarex-dimes-srg-api
-Project-URL: Issues, https://github.com/Rotarex/rotarex-dimes-srg-api/issues
+Project-URL: Homepage, https://github.com/Rotarex-Innovation/rotarex-dimes-srg-api
+Project-URL: Repository, https://github.com/Rotarex-Innovation/rotarex-dimes-srg-api
+Project-URL: Issues, https://github.com/Rotarex-Innovation/rotarex-dimes-srg-api/issues
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Programming Language :: Python :: 3
 Requires-Python: >=3.9
