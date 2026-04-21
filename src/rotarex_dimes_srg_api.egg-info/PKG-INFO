@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: rotarex-dimes-srg-api
-Version: 0.1.7
+Version: 0.1.6
 Summary: Async Python client for Rotarex DIMES SRG API
 Author-email: ROTAREX <develop@rotarex.com>
 License: MIT
