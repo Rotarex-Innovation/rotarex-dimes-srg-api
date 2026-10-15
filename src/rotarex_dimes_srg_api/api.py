@@ -9,8 +9,7 @@ import aiohttp
 from .exceptions import InvalidAuth, RotarexConnectionError, RotarexError
 from .models import RotarexTank
 
-# Development server, to be replaced by the production server before release
-DEFAULT_BASE_URL = "https://wavedev.rotarex.com"
+DEFAULT_BASE_URL = "https://waveapi.rotarex.com"
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
 # The token endpoint answers 400 (invalid_grant) or 401 for wrong credentials
 AUTH_ERROR_STATUSES = (400, 401)

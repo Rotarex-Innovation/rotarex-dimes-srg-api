@@ -11,14 +11,15 @@ from aioresponses import aioresponses
 from yarl import URL
 
 from rotarex_dimes_srg_api import (
+    DEFAULT_BASE_URL,
     InvalidAuth,
     RotarexApi,
     RotarexConnectionError,
     RotarexError,
 )
 
-TOKEN_URL = "https://wavedev.rotarex.com/token"
-TANKS_URL = "https://wavedev.rotarex.com/api/Tanks"
+TOKEN_URL = f"{DEFAULT_BASE_URL}/token"
+TANKS_URL = f"{DEFAULT_BASE_URL}/api/Tanks"
 TOKEN = {"access_token": "token", "expires_in": 3600}
 TANKS = [
     {
