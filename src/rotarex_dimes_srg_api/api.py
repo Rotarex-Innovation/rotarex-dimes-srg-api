@@ -1,97 +1,102 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiohttp
 
-from .exceptions import InvalidAuth
+from .exceptions import InvalidAuth, RotarexConnectionError, RotarexError
 from .models import RotarexTank
+
+# Development server, to be replaced by the production server before release
+DEFAULT_BASE_URL = "https://wavedev.rotarex.com"
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
+# The token endpoint answers 400 (invalid_grant) or 401 for wrong credentials
+AUTH_ERROR_STATUSES = (400, 401)
+# Renew the token slightly before it expires to avoid races with the server
+TOKEN_EXPIRY_MARGIN = timedelta(seconds=60)
 
 
 class RotarexApi:
-    def __init__(self, session: aiohttp.ClientSession) -> None:
-        self._session = session
-        self.access_token: str | None = None
-        self.expires_at: datetime | None = None
-        self._email: str | None = None
-        self._password: str | None = None
+    """Client for the Rotarex DIMES SRG API."""
 
-    def set_credentials(self, email: str, password: str) -> None:
-        """Store credentials for re-authentication."""
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        email: str,
+        password: str,
+        *,
+        base_url: str = DEFAULT_BASE_URL,
+    ) -> None:
+        self._session = session
+        self._base_url = base_url.rstrip("/")
         self._email = email
         self._password = password
+        self._access_token: str | None = None
+        self._expires_at: datetime | None = None
 
-    async def login(self, email: str, password: str) -> None:
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
+    async def login(self) -> None:
+        """Authenticate with the stored credentials and store the access token.
 
-        hashed_password = self.hash_message(password)
-
+        Raises InvalidAuth when the credentials are rejected and
+        RotarexConnectionError when the API cannot be reached or fails.
+        """
         payload = {
             "grant_type": "password",
-            "username": email,
-            "password": hashed_password,
+            "username": self._email,
+            "password": hashlib.sha256(self._password.encode("utf-8")).hexdigest(),
         }
+        try:
+            async with self._session.post(
+                f"{self._base_url}/token", data=payload, timeout=REQUEST_TIMEOUT
+            ) as resp:
+                if resp.status in AUTH_ERROR_STATUSES:
+                    raise InvalidAuth(f"Login rejected with status {resp.status}")
+                resp.raise_for_status()
+                token_data = await resp.json()
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise RotarexConnectionError(f"Error during login: {err}") from err
 
-        async with self._session.post(
-            "https://wavedev.rotarex.com/token",
-            data=payload,
-            headers=headers,
-            timeout=15,
-        ) as resp:
-            if resp.status != 200:
-                body = await resp.text()
-                raise InvalidAuth(f"Login failed with status {resp.status}: {body}")
-
-            token_data = await resp.json()
-
-        self.access_token = token_data["access_token"]
-        self.expires_at = datetime.now(timezone.utc) + timedelta(
-            seconds=int(token_data["expires_in"])
-        )
-
-    @staticmethod
-    def hash_message(message: str) -> str:
-        """Hashes a message using SHA-256."""
-        return hashlib.sha256(message.encode("utf-8")).hexdigest()
-
-    def token_expired(self) -> bool:
-        if not self.expires_at:
-            return True
-        return datetime.now(timezone.utc) >= self.expires_at
+        try:
+            self._access_token = token_data["access_token"]
+            expires_in = int(token_data["expires_in"])
+        except (KeyError, TypeError, ValueError) as err:
+            raise RotarexError("Unexpected token response") from err
+        self._expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
 
     async def fetch_tanks(self) -> list[RotarexTank]:
-        """Fetch tanks from Rotarex API."""
-        if not self.access_token or self.token_expired():
-            if self._email and self._password:
-                await self.login(self._email, self._password)
-            else:
-                raise InvalidAuth(
-                    "Missing or expired token and no credentials to re-login."
-                )
+        """Fetch all tanks of the account, logging in when needed."""
+        if self._token_expired():
+            await self.login()
 
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        raw = await self._request_tanks()
+        if raw is None:
+            # The token was revoked server side, log in again once
+            await self.login()
+            raw = await self._request_tanks()
+            if raw is None:
+                raise InvalidAuth("Access token rejected after a new login")
 
-        async with self._session.get(
-            "https://wavedev.rotarex.com/api/Tanks",
-            headers=headers,
-            timeout=15,
-        ) as resp:
-            if resp.status == 401 and self._email and self._password:
-                await self.login(self._email, self._password)
-                headers["Authorization"] = f"Bearer {self.access_token}"
-                async with self._session.get(
-                    "https://wavedev.rotarex.com/api/Tanks",
-                    headers=headers,
-                    timeout=15,
-                ) as retry_resp:
-                    retry_resp.raise_for_status()
-                    raw: list[dict[str, Any]] = await retry_resp.json()
-                    return [RotarexTank.from_dict(t) for t in raw if "Guid" in t]
+        return [RotarexTank.from_dict(tank) for tank in raw if "Guid" in tank]
 
-            resp.raise_for_status()
-            raw = await resp.json()
-            return [RotarexTank.from_dict(t) for t in raw if "Guid" in t]
+    def _token_expired(self) -> bool:
+        if self._access_token is None or self._expires_at is None:
+            return True
+        return datetime.now(UTC) >= self._expires_at - TOKEN_EXPIRY_MARGIN
+
+    async def _request_tanks(self) -> list[dict[str, Any]] | None:
+        """Request the raw tank list, returning None when the token is rejected."""
+        try:
+            async with self._session.get(
+                f"{self._base_url}/api/Tanks",
+                headers={"Authorization": f"Bearer {self._access_token}"},
+                timeout=REQUEST_TIMEOUT,
+            ) as resp:
+                if resp.status == 401:
+                    return None
+                resp.raise_for_status()
+                tanks: list[dict[str, Any]] = await resp.json()
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise RotarexConnectionError(f"Error fetching tanks: {err}") from err
+        return tanks

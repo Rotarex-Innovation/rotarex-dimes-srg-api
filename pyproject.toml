@@ -1,17 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "rotarex-dimes-srg-api"
-version = "0.1.7"
+version = "0.2.0"
 description = "Async Python client for Rotarex DIMES SRG API"
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "MIT" }
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Typing :: Typed",
 ]
 authors = [
   { name = "ROTAREX", email = "develop@rotarex.com" }
@@ -20,7 +21,26 @@ dependencies = [
   "aiohttp>=3.9.0"
 ]
 
+[project.optional-dependencies]
+test = [
+  "aioresponses",
+  "mypy",
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+]
+
 [project.urls]
 Homepage = "https://github.com/Rotarex-Innovation/rotarex-dimes-srg-api"
 Repository = "https://github.com/Rotarex-Innovation/rotarex-dimes-srg-api"
 Issues = "https://github.com/Rotarex-Innovation/rotarex-dimes-srg-api/issues"
+
+[tool.setuptools.package-data]
+rotarex_dimes_srg_api = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
